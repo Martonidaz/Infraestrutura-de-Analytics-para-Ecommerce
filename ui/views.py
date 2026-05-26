@@ -72,7 +72,6 @@ def render_dashboard():
             
     st.markdown("---")
 
-    # Nova estrutura de Abas: Adicionada a aba de Inspeção
     if st.session_state.role == "root":
         tab_ingestao, tab_inspecao, tab_admin = st.tabs(["📥 Ingestão Incremental", "🔍 Inspecionar Banco", "⚙️ Painel Root"])
     else:
@@ -86,7 +85,6 @@ def render_dashboard():
         
         origem_selecionada = st.selectbox("📍 Origem destes dados:", file_manager.MARKETPLACES)
         
-        # Agora o upload aceita múltiplos arquivos e CSVs
         uploaded_files = st.file_uploader(
             f"Arraste os arquivos recentes ({origem_selecionada})", 
             type=["xlsx", "csv"], 
@@ -96,10 +94,8 @@ def render_dashboard():
         if uploaded_files:
             st.markdown(f"**{len(uploaded_files)} arquivo(s) detectado(s).**")
             
-            # Loop por cada arquivo para organizar a UI
             for idx, file in enumerate(uploaded_files):
                 with st.expander(f"📄 Arquivo {idx+1}: {file.name}", expanded=True):
-                    # 4 Colunas incluindo Data e Hora
                     col1, col2, col3, col4 = st.columns(4)
                     with col1: st.metric("Arquivo", file.name)
                     with col2: st.metric("Tamanho", f"{file.size / 1024:.2f} KB")
@@ -110,10 +106,10 @@ def render_dashboard():
                         abas = file_manager.obter_abas(file)
                         selected_sheet = st.selectbox(f"Aba para carga ({file.name}):", abas, key=f"sheet_{file.name}")
                         
-                        df_vis = file_manager.ler_amostra(file, selected_sheet)
+                        # Atualizado para passar a origem_selecionada e pular as linhas lixo na pré-visualização
+                        df_vis = file_manager.ler_amostra(file, origem_selecionada, selected_sheet)
                         st.dataframe(df_vis, width='stretch')
                         
-                        # Botão individual para cada arquivo
                         if st.button(f"Processar {file.name}", key=f"btn_{file.name}"):
                             with st.spinner("Integrando ao banco histórico..."):
                                 l_novas, l_totais = file_manager.processar_carga_incremental(file, origem_selecionada, selected_sheet)
@@ -122,29 +118,47 @@ def render_dashboard():
                     except Exception as e:
                         st.error(f"Erro ao ler arquivo: {e}")
 
-    # ABA 2: INSPECIONAR BANCO (Só aparece para o root)
+    # ABA 2: INSPECIONAR BANCO (Com Separação Visual e Filtros)
     if tab_inspecao is not None:
         with tab_inspecao:
-            st.subheader("Visualização Raw do Banco Parquet")
-            st.write("Aqui você audita os dados processados antes que eles vão para o dashboard final.")
+            st.subheader("🔍 Governança e Qualidade de Dados")
             
             df_banco = file_manager.ler_banco_completo()
             
             if not df_banco.empty:
-                st.metric("Total de Registros Oficiais", len(df_banco))
-                st.dataframe(df_banco, width='stretch', height=400)
+                # 1. Visão Geral (Kpis)
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Total de Registros (Todas Origens)", len(df_banco))
+                with col2:
+                    # Contagem por Origem
+                    distribuicao = df_banco['Origem_Marketplace'].value_counts().reset_index()
+                    distribuicao.columns = ['Origem', 'Qtd Registros']
+                    st.dataframe(distribuicao, hide_index=True, width='stretch')
+
+                st.markdown("---")
                 
-                # Permite baixar o banco em CSV para auditoria externa
+                # 2. Área de Filtro para Isolamento de Dados
+                st.markdown("### Explorador de Origem")
+                origens_disponiveis = df_banco['Origem_Marketplace'].unique()
+                filtro_origem = st.multiselect("Selecione a(s) caixa(s) que deseja visualizar:", origens_disponiveis, default=origens_disponiveis)
+                
+                # Aplica o filtro
+                df_filtrado = df_banco[df_banco['Origem_Marketplace'].isin(filtro_origem)]
+                
+                # Mostra os dados filtrados
+                st.dataframe(df_filtrado, width='stretch', height=400)
+                
                 st.download_button(
-                    label="⬇️ Baixar Banco Completo (CSV)",
-                    data=df_banco.to_csv(index=False).encode('utf-8'),
-                    file_name="banco_vendas_auditoria.csv",
+                    label="⬇️ Baixar Extração Filtrada (CSV)",
+                    data=df_filtrado.to_csv(index=False).encode('utf-8'),
+                    file_name="extracao_auditoria.csv",
                     mime="text/csv"
                 )
             else:
                 st.warning("O banco histórico está vazio. Faça uma ingestão primeiro.")
 
-    # ABA 3: PAINEL ROOT
+    # ABA 3: PAINEL ROOT (Mantido igual)
     if tab_admin is not None:
         with tab_admin:
             st.subheader("Gestão de Acessos")
