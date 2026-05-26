@@ -58,7 +58,14 @@ def processar_carga_incremental(uploaded_file, marketplace_selecionado, sheet_na
         if df_novo[col].dtype == 'object':
             df_novo[col] = df_novo[col].astype(str)
 
+    # ==========================================
+    # CARIMBO DE AUDITORIA E RASTREABILIDADE
+    # ==========================================
     df_novo['Origem_Marketplace'] = marketplace_selecionado 
+    df_novo['Arquivo_Origem'] = uploaded_file.name
+    df_novo['Data_Ingestao'] = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")
+    # ==========================================
+    
     linhas_novas = len(df_novo)
 
     if os.path.exists(HISTORICO_DB):

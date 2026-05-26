@@ -43,7 +43,7 @@ def render_login():
 
 def render_dashboard():
     st.markdown("""
-        <style>
+        <style> 
         .main { background-color: #0f172a; color: #f8fafc; }
         .stButton>button { background-color: #deff9a; color: #000000; font-weight: bold; border-radius: 8px; border: none; transition: all 0.3s ease; }
         .stButton>button:hover { background-color: #b5e550; color: #000000; box-shadow: 0px 0px 15px rgba(222, 255, 154, 0.6); }
@@ -118,7 +118,7 @@ def render_dashboard():
                     except Exception as e:
                         st.error(f"Erro ao ler arquivo: {e}")
 
-    # ABA 2: INSPECIONAR BANCO (Com Separação Visual e Filtros)
+   # ABA 2: INSPECIONAR BANCO (Com Rastreabilidade)
     if tab_inspecao is not None:
         with tab_inspecao:
             st.subheader("🔍 Governança e Qualidade de Dados")
@@ -131,22 +131,30 @@ def render_dashboard():
                 with col1:
                     st.metric("Total de Registros (Todas Origens)", len(df_banco))
                 with col2:
-                    # Contagem por Origem
                     distribuicao = df_banco['Origem_Marketplace'].value_counts().reset_index()
                     distribuicao.columns = ['Origem', 'Qtd Registros']
                     st.dataframe(distribuicao, hide_index=True, width='stretch')
 
                 st.markdown("---")
                 
-                # 2. Área de Filtro para Isolamento de Dados
-                st.markdown("### Explorador de Origem")
+                # 2. Linhagem de Arquivos (Rastreabilidade)
+                st.markdown("### 🗂️ Linhagem de Arquivos (Data Lineage)")
+                st.write("Histórico exato de quais planilhas compõem este banco de dados e quantas linhas úteis foram extraídas de cada uma.")
+                
+                # Agrupa os dados para contar quantas linhas vieram de cada arquivo
+                rastreabilidade = df_banco.groupby(['Origem_Marketplace', 'Arquivo_Origem', 'Data_Ingestao']).size().reset_index(name='Linhas Únicas Salvas')
+                rastreabilidade['Total de Colunas'] = len(df_banco.columns) # Pega a quantidade atual de colunas
+                
+                st.dataframe(rastreabilidade, hide_index=True, width='stretch')
+
+                st.markdown("---")
+                
+                # 3. Área de Filtro para Isolamento de Dados
+                st.markdown("### Explorador de Banco de Dados")
                 origens_disponiveis = df_banco['Origem_Marketplace'].unique()
-                filtro_origem = st.multiselect("Selecione a(s) caixa(s) que deseja visualizar:", origens_disponiveis, default=origens_disponiveis)
+                filtro_origem = st.multiselect("Selecione a(s) origem(ns) que deseja visualizar:", origens_disponiveis, default=origens_disponiveis)
                 
-                # Aplica o filtro
                 df_filtrado = df_banco[df_banco['Origem_Marketplace'].isin(filtro_origem)]
-                
-                # Mostra os dados filtrados
                 st.dataframe(df_filtrado, width='stretch', height=400)
                 
                 st.download_button(
