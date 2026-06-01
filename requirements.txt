@@ -3,3 +3,4 @@ pandas
 python-calamine
 pyarrow
 fastparquet
+openpyxl
