@@ -7,18 +7,6 @@ from core import auth
 from core import file_manager
 
 def render_login():
-    st.markdown("""
-        <style>
-        .login-box { background-color: #1e293b; padding: 40px; border-radius: 12px; border: 1px solid #334155; max-width: 450px; margin: 80px auto; }
-        .header-logo { text-align: center; font-size: 50px; margin-bottom: 0px; }
-        h2 { color: #deff9a; text-align: center; margin-top: 0px; }
-        .stButton>button { background-color: #deff9a; color: #000000; font-weight: bold; border-radius: 8px; border: none; transition: all 0.3s ease; }
-        .stButton>button:hover { background-color: #b5e550; color: #000000; box-shadow: 0px 0px 15px rgba(222, 255, 154, 0.6); border-color: #deff9a; }
-        </style>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="login-box">', unsafe_allow_html=True)
-    st.markdown('<div class="header-logo">⚡</div>', unsafe_allow_html=True)
     st.markdown("<h2>Acesso Restrito</h2>", unsafe_allow_html=True)
     
     usuario_sugerido = auth.carregar_lembrete()
@@ -53,7 +41,7 @@ def render_dashboard():
 
     col_title, col_user, col_logout = st.columns([0.6, 0.3, 0.1])
     with col_title:
-        st.title("⚡ Portal Interno de Analytics")
+        st.title("Portal Interno de Analytics")
     with col_user:
         badge_color = "#deff9a" if st.session_state.role == "root" else "#94a3b8"
         st.markdown(f"""
