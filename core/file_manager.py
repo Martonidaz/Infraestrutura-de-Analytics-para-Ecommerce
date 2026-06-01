@@ -84,9 +84,15 @@ def listar_bancos_disponiveis():
             if file.endswith('.parquet'):
                 caminho = os.path.join(PROCESSED_DATA_DIR, file)
                 df = pd.read_parquet(caminho)
+                
                 marketplace = df['Origem_Marketplace'].iloc[0] if not df.empty and 'Origem_Marketplace' in df.columns else "Desconhecido"
+                tipo = df['Tipo_Relatorio'].iloc[0] if not df.empty and 'Tipo_Relatorio' in df.columns else "Desconhecido"
+                
                 bancos.append({
+                    "arquivo": file,
                     "marketplace": marketplace,
+                    "tipo": tipo,
+                    "caminho": caminho,
                     "dataframe": df
                 })
     return bancos
