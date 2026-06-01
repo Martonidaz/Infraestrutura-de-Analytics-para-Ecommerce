@@ -59,7 +59,7 @@ def processar_carga_incremental(uploaded_file, marketplace, sheet_name, usuario,
     df_novo['Origem_Marketplace'] = marketplace 
     df_novo['Tipo_Relatorio'] = tipo_relatorio
     df_novo['Arquivo_Origem'] = uploaded_file.name
-    df_novo['Aba_Origem'] = sheet_name # NOVO: Rastreando a Aba
+    df_novo['Aba_Origem'] = sheet_name
     df_novo['Data_Ingestao'] = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")
     df_novo['Usuario_Carga'] = usuario
     df_novo['Privilegio'] = privilegio
@@ -69,13 +69,43 @@ def processar_carga_incremental(uploaded_file, marketplace, sheet_name, usuario,
 
     if os.path.exists(banco_alvo):
         df_historico = pd.read_parquet(banco_alvo)
+        
+        # SOBRESCRITA INTELIGENTE: Se o arquivo já existe no banco, apagamos a versão velha antes de colar a nova.
+        df_historico = df_historico[df_historico['Arquivo_Origem'] != uploaded_file.name]
+        
         df_completo = pd.concat([df_historico, df_novo], ignore_index=True)
-        df_completo = df_completo.drop_duplicates()
     else:
         df_completo = df_novo
 
+    colunas_auditoria = ['Origem_Marketplace', 'Tipo_Relatorio', 'Arquivo_Origem', 'Aba_Origem', 'Data_Ingestao', 'Usuario_Carga', 'Privilegio']
+    colunas_dados = [col for col in df_completo.columns if col not in colunas_auditoria]
+    
+    df_completo = df_completo.drop_duplicates(subset=colunas_dados, keep='last')
+    
     df_completo.to_parquet(banco_alvo, index=False)
     return linhas_novas, len(df_completo)
+
+# --- NOVAS FUNÇÕES PARA GESTÃO DE SESSÃO ---
+def verificar_arquivo_existe(marketplace, nome_arquivo):
+    tipo, _ = auto_detectar_tipo_e_pulo(marketplace, nome_arquivo)
+    banco_alvo = gerar_nome_banco(marketplace, tipo)
+    if os.path.exists(banco_alvo):
+        df = pd.read_parquet(banco_alvo)
+        if 'Arquivo_Origem' in df.columns:
+            return nome_arquivo in df['Arquivo_Origem'].values
+    return False
+
+def deletar_arquivo_do_banco(marketplace, tipo_relatorio, nome_arquivo) -> bool:
+    banco_alvo = gerar_nome_banco(marketplace, tipo_relatorio)
+    if os.path.exists(banco_alvo):
+        df = pd.read_parquet(banco_alvo)
+        df_filtrado = df[df['Arquivo_Origem'] != nome_arquivo]
+        if len(df_filtrado) == 0:
+            os.remove(banco_alvo) # Deleta o banco inteiro se ficar vazio
+        else:
+            df_filtrado.to_parquet(banco_alvo, index=False)
+        return True
+    return False
 
 def listar_bancos_disponiveis():
     bancos = []
@@ -84,15 +114,9 @@ def listar_bancos_disponiveis():
             if file.endswith('.parquet'):
                 caminho = os.path.join(PROCESSED_DATA_DIR, file)
                 df = pd.read_parquet(caminho)
-                
                 marketplace = df['Origem_Marketplace'].iloc[0] if not df.empty and 'Origem_Marketplace' in df.columns else "Desconhecido"
                 tipo = df['Tipo_Relatorio'].iloc[0] if not df.empty and 'Tipo_Relatorio' in df.columns else "Desconhecido"
-                
                 bancos.append({
-                    "arquivo": file,
-                    "marketplace": marketplace,
-                    "tipo": tipo,
-                    "caminho": caminho,
-                    "dataframe": df
+                    "arquivo": file, "marketplace": marketplace, "tipo": tipo, "caminho": caminho, "dataframe": df
                 })
     return bancos

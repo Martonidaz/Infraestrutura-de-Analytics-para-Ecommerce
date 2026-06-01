@@ -37,30 +37,16 @@ def render_dashboard():
         .stButton>button:hover { background-color: #b5e550; color: #000000; box-shadow: 0px 0px 15px rgba(222, 255, 154, 0.6); }
         div[data-testid="stExpander"] { background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; }
         
-        /* Estilização para as Abas do Streamlit parecerem menus de navegação modernos */
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 8px;
-        }
+        .stTabs [data-baseweb="tab-list"] { gap: 8px; }
         .stTabs [data-baseweb="tab"] {
-            height: 50px;
-            white-space: pre-wrap;
-            background-color: #1e293b;
-            border-radius: 8px 8px 0px 0px;
-            gap: 1px;
-            padding-top: 10px;
-            padding-bottom: 10px;
-            border: 1px solid #334155;
-            border-bottom: none;
+            height: 50px; white-space: pre-wrap; background-color: #1e293b;
+            border-radius: 8px 8px 0px 0px; gap: 1px; padding-top: 10px;
+            padding-bottom: 10px; border: 1px solid #334155; border-bottom: none;
         }
-        .stTabs [aria-selected="true"] {
-            background-color: #0f172a;
-            color: #deff9a;
-            border-bottom: 2px solid #deff9a;
-        }
+        .stTabs [aria-selected="true"] { background-color: #0f172a; color: #deff9a; border-bottom: 2px solid #deff9a; }
         </style>
     """, unsafe_allow_html=True)
 
-    # --- HEADER ---
     col_title, col_user, col_logout = st.columns([0.6, 0.3, 0.1])
     with col_title: st.title("⚡ Portal Interno de Analytics")
     with col_user:
@@ -79,23 +65,16 @@ def render_dashboard():
             
     st.markdown("---")
 
-    # --- CONTROLE DE ACESSO AS ABAS ---
     if st.session_state.role == "root":
-        # A Jornada Completa
         tab_ingestao, tab_etl, tab_modelagem, tab_dash, tab_admin = st.tabs([
-            "📥 1. Ingestão", 
-            "🛠️ 2. Transformação (ETL)", 
-            "🕸️ 3. Modelagem", 
-            "📊 4. Dashboards", 
-            "⚙️ Painel Root"
+            "📥 1. Ingestão", "🛠️ 2. Transformação (ETL)", "🕸️ 3. Modelagem", "📊 4. Dashboards", "⚙️ Painel Root"
         ])
     else:
-        # Analistas veem apenas Dashboards (e talvez Ingestão, dependendo da sua regra)
         tab_dash, tab_ingestao = st.tabs(["📊 Dashboards", "📥 Ingestão"])
         tab_etl = tab_modelagem = tab_admin = None
 
     # ==========================================
-    # GUIA 1: INGESTÃO (O código que já fizemos)
+    # GUIA 1: INGESTÃO (Mais Limpa e Retrátil)
     # ==========================================
     with tab_ingestao:
         st.subheader("Módulo de Carga")
@@ -104,18 +83,30 @@ def render_dashboard():
         
         if uploaded_files:
             for idx, file in enumerate(uploaded_files):
-                with st.expander(f"Arquivo {idx+1}: {file.name}", expanded=True):
+                # CORREÇÃO 1: expanded=False mantém a caixa fechada por padrão, facilitando a navegação
+                with st.expander(f"Arquivo {idx+1}: {file.name}", expanded=False):
                     try:
+                        ja_existe = file_manager.verificar_arquivo_existe(origem_selecionada, file.name)
+                        if ja_existe:
+                            # CORREÇÃO 2: Alerta muito mais claro e chamativo
+                            st.error("🚨 **ATENÇÃO: PLANILHA DUPLICADA DETECTADA!**\n\nEste exato arquivo já consta no banco de dados da plataforma. Se você prosseguir, os dados antigos serão apagados e **SUBSTITUÍDOS** pela versão que você está subindo agora.")
+                            texto_botao = f"🔄 Confirmar Substituição de {file.name}"
+                        else:
+                            texto_botao = f"▶️ Processar {file.name}"
+
                         abas = file_manager.obter_abas(file)
                         selected_sheet = st.selectbox("Aba:", abas, key=f"sheet_{file.name}")
                         df_vis = file_manager.ler_amostra(file, origem_selecionada, selected_sheet)
-                        st.dataframe(df_vis, width='stretch')
-                        if st.button(f"Processar {file.name}", key=f"btn_{file.name}"):
+                        
+                        # Tabela limitada a 150 pixels de altura para não forçar scroll
+                        st.dataframe(df_vis, height=150, use_container_width=True)
+                        
+                        if st.button(texto_botao, key=f"btn_{file.name}"):
                             with st.spinner("Integrando..."):
                                 l_novas, l_totais = file_manager.processar_carga_incremental(
                                     file, origem_selecionada, selected_sheet, st.session_state.nome_usuario, st.session_state.role
                                 )
-                            st.success(f"Carga concluída! Adicionadas {l_novas} linhas. Total do banco: {l_totais}.")
+                            st.success(f"Carga concluída! Processadas {l_novas} linhas. Total consolidado no banco: {l_totais}.")
                     except Exception as e: st.error(f"Erro: {e}")
 
     # ==========================================
@@ -123,26 +114,64 @@ def render_dashboard():
     # ==========================================
     if tab_etl is not None:
         with tab_etl:
-            st.subheader("🛠️ Motor de Transformação (ETL)")
-            st.write("Selecione um banco de dados bruto para aplicar regras de limpeza, formatação e criação de colunas.")
+            st.subheader("🛠️ Motor de Transformação (Exibição de Dados)")
+            st.write("Visualize os dados brutos, aplique regras e gerencie as planilhas do banco.")
             
             bancos = file_manager.listar_bancos_disponiveis()
             if bancos:
-                # Cria uma lista bonita para o usuário ler, ex: "[Mercado Livre] db_mercado_livre_vendas_geral.parquet"
-                opcoes_banco = {f"[{b['marketplace']}] {b['tipo']}": b for b in bancos}
+                mk_escolhido = st.selectbox("1️⃣ Selecione o Marketplace para explorar:", list(set([b['marketplace'] for b in bancos])), key="etl_mk")
+                df_mk = pd.concat([b["dataframe"] for b in bancos if b["marketplace"] == mk_escolhido], ignore_index=True)
                 
-                banco_alvo = st.selectbox("Selecione o contexto para transformar:", list(opcoes_banco.keys()))
+                arquivos_no_banco = df_mk['Arquivo_Origem'].unique()
                 
-                st.info("🚧 Área em construção. Aqui aplicaremos as regras customizadas (Remover Nulos, Formatar Texto, Injetar Regras).")
-                
-                # Mockup do que construiremos
-                col_regra, col_aplicar = st.columns([0.8, 0.2])
-                with col_regra:
-                    st.selectbox("Adicionar Etapa Aplicada:", ["Nenhuma", "Remover Duplicatas", "Limpar Caracteres Especiais", "Criar Coluna Calculada"])
-                with col_aplicar:
+                col_sel_arq, col_btn_del = st.columns([0.8, 0.2])
+                with col_sel_arq:
+                    arq_escolhido = st.selectbox("2️⃣ Selecione a Planilha (Sessão):", arquivos_no_banco, key="etl_arq")
+                with col_btn_del:
+                    st.write("") 
                     st.write("")
-                    st.write("")
-                    st.button("Aplicar Regra", disabled=True)
+                    # CORREÇÃO 3: Popover atua como um botão que abre uma janela de confirmação de exclusão
+                    with st.popover("🗑️ Excluir do Banco", use_container_width=True):
+                        st.markdown(f"**Deletar permanentemente?**")
+                        st.write(f"Você está prestes a apagar os dados de `{arq_escolhido}`.")
+                        # Botão com type="primary" para ficar destacado (vermelho na maioria dos temas)
+                        if st.button("Sim, apagar dados", type="primary", use_container_width=True):
+                            tipo_rel = df_mk[df_mk['Arquivo_Origem'] == arq_escolhido]['Tipo_Relatorio'].iloc[0]
+                            file_manager.deletar_arquivo_do_banco(mk_escolhido, tipo_rel, arq_escolhido)
+                            st.success("Planilha excluída com sucesso!")
+                            st.rerun()
+                
+                df_arq = df_mk[df_mk['Arquivo_Origem'] == arq_escolhido]
+                
+                modo_vis = st.radio("3️⃣ Visualizar:", ["Planilha Inteira", "Por Aba"], horizontal=True, key="etl_modo")
+                if modo_vis == "Por Aba":
+                    abas_disp = df_arq['Aba_Origem'].unique()
+                    df_final = df_arq[df_arq['Aba_Origem'] == st.selectbox("Aba:", abas_disp, key="etl_aba")]
+                else:
+                    df_final = df_arq
+                
+                st.markdown("---")
+                
+                col_tabela, col_regras = st.columns([0.75, 0.25])
+                
+                with col_tabela:
+                    st.metric("Linhas Visíveis", len(df_final))
+                    st.dataframe(df_final, width='stretch', height=500)
+                    
+                    c_csv, c_xls, c_pdf = st.columns(3)
+                    c_csv.download_button("Exportar CSV", data=df_final.to_csv(index=False, sep=',').encode('utf-8'), file_name="dados.csv", mime="text/csv", use_container_width=True)
+                    import io
+                    excel_buffer = io.BytesIO()
+                    df_final.to_excel(excel_buffer, index=False, engine='openpyxl')
+                    c_xls.download_button("Exportar XLSX", data=excel_buffer.getvalue(), file_name="dados.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                    html_data = f"<html><body><h2>Tabela - {arq_escolhido}</h2>{df_final.to_html(index=False)}</body></html>".encode('utf-8')
+                    c_pdf.download_button("Exportar PDF", data=html_data, file_name="dados.html", mime="text/html", help="Imprima como PDF", use_container_width=True)
+
+                with col_regras:
+                    st.markdown("### ⚙️ Etapas Aplicadas")
+                    st.info("Aqui as regras em Python/Polars serão injetadas.")
+                    st.selectbox("Nova Regra:", ["Nenhuma", "Definir Chave Primária", "Substituir Valores", "Remover Colunas Vazias", "Alterar Tipo de Dado"])
+                    st.button("Executar Limpeza", use_container_width=True, disabled=True)
             else:
                 st.warning("Não há bancos disponíveis para transformação. Vá na aba de Ingestão primeiro.")
 
@@ -153,54 +182,32 @@ def render_dashboard():
         with tab_modelagem:
             st.subheader("🕸️ Modelagem de Dados")
             st.write("Crie ligações (Joins) entre os diferentes bancos de dados para cruzar informações.")
-            st.info("🚧 Área em construção. Aqui exibiremos o diagrama de rede (Node Graph) das tabelas.")
+            st.info("🚧 Área em construção.")
 
     # ==========================================
-    # GUIA 4: DASHBOARDS (Visualização)
+    # GUIA 4: DASHBOARDS (Exibição de Relatório)
     # ==========================================
     with tab_dash:
-        # Mesclamos o Explorador de Dados que fizemos antes para dentro desta aba,
-        # pois analisar a tabela já é o primeiro passo da visualização.
-        st.subheader("📊 Visualização e Exportação")
-        bancos = file_manager.listar_bancos_disponiveis()
+        st.subheader("📊 Construtor de Relatórios")
+        st.write("Selecione os dados transformados para compor os painéis visuais.")
         
+        bancos = file_manager.listar_bancos_disponiveis()
         if bancos:
-            marketplaces_unicos = list(set([b['marketplace'] for b in bancos]))
-            mk_escolhido = st.selectbox("1️⃣ Selecione o Marketplace:", marketplaces_unicos, key="dash_mk")
-            df_mk = pd.concat([b["dataframe"] for b in bancos if b["marketplace"] == mk_escolhido], ignore_index=True)
-            
-            # (Mantido o código de visualização e exportação que já validamos)
-            arquivos_no_banco = df_mk['Arquivo_Origem'].unique()
-            arq_escolhido = st.selectbox("2️⃣ Planilha Fonte:", arquivos_no_banco, key="dash_arq")
-            df_arq = df_mk[df_mk['Arquivo_Origem'] == arq_escolhido]
-            
-            modo_vis = st.radio("3️⃣ Visualizar:", ["Planilha Inteira", "Por Aba"], horizontal=True, key="dash_modo")
-            if modo_vis == "Por Aba":
-                abas_disp = df_arq['Aba_Origem'].unique()
-                df_final = df_arq[df_arq['Aba_Origem'] == st.selectbox("Aba:", abas_disp, key="dash_aba")]
-            else:
-                df_final = df_arq
-            
-            st.dataframe(df_final, width='stretch', height=300)
-            
-            # Exportação
-            col_csv, col_xls, col_pdf = st.columns(3)
-            col_csv.download_button("Exportar CSV", data=df_final.to_csv(index=False, sep=',').encode('utf-8'), file_name="relatorio.csv", mime="text/csv", use_container_width=True)
-            import io
-            excel_buffer = io.BytesIO()
-            df_final.to_excel(excel_buffer, index=False, engine='openpyxl')
-            col_xls.download_button("Exportar XLSX", data=excel_buffer.getvalue(), file_name="relatorio.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-            html_data = f"<html><body><h2>Relatório - {arq_escolhido}</h2>{df_final.to_html(index=False)}</body></html>".encode('utf-8')
-            col_pdf.download_button("Exportar PDF", data=html_data, file_name="relatorio.html", mime="text/html", help="Imprima como PDF", use_container_width=True)
-            
-            st.markdown("---")
-            st.info("🚧 Em breve: Gráficos dinâmicos (Barras, Linhas, Pizza) aparecerão aqui.")
-
+            col_controles, col_canvas = st.columns([0.25, 0.75])
+            with col_controles:
+                st.markdown("### 🎨 Visualização")
+                mk_graf = st.selectbox("Fonte de Dados:", list(set([b['marketplace'] for b in bancos])), key="graf_mk")
+                st.selectbox("Tipo de Gráfico:", ["Gráfico de Barras", "Gráfico de Linhas", "Gráfico de Pizza", "Tabela Resumo"])
+                st.selectbox("Eixo X (Categoria):", ["Data_Ingestao", "Arquivo_Origem"])
+                st.selectbox("Eixo Y (Valores):", ["Contagem de Linhas", "Faturamento Total (BETA)"])
+                st.button("Gerar Gráfico", use_container_width=True, disabled=True)
+            with col_canvas:
+                st.markdown("<div style='height: 500px; border: 2px dashed #334155; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 20px;'>Área de Renderização dos Gráficos (Plotly)</div>", unsafe_allow_html=True)
         else:
-            st.warning("Faça a ingestão de dados para visualizar o Dashboard.")
+            st.warning("Faça a ingestão de dados para criar Dashboards.")
 
     # ==========================================
-    # GUIA 5: PAINEL ROOT (Segurança)
+    # GUIA 5: PAINEL ROOT
     # ==========================================
     if tab_admin is not None:
         with tab_admin:
@@ -235,7 +242,6 @@ def render_dashboard():
                         s, m = auth.excluir_usuario(usr)
                         if s: st.success(m); st.rerun()
                         else: st.error(m)
-
 def render_app():
     st.set_page_config(page_title="Portal de Analytics", page_icon="⚡", layout="wide")
     if "logado" not in st.session_state:
