@@ -74,7 +74,7 @@ def render_dashboard():
         tab_etl = tab_modelagem = tab_admin = None
 
     # ==========================================
-    # GUIA 1: INGESTÃO (Mais Limpa e Retrátil)
+    # GUIA 1: INGESTÃO (Com Alerta Prévio no Expander)
     # ==========================================
     with tab_ingestao:
         st.subheader("Módulo de Carga")
@@ -83,14 +83,25 @@ def render_dashboard():
         
         if uploaded_files:
             for idx, file in enumerate(uploaded_files):
-                # CORREÇÃO 1: expanded=False mantém a caixa fechada por padrão, facilitando a navegação
-                with st.expander(f"Arquivo {idx+1}: {file.name}", expanded=False):
+                
+                # 1. VERIFICAÇÃO ANTECIPADA (Antes de desenhar a interface)
+                try:
+                    ja_existe = file_manager.verificar_arquivo_existe(origem_selecionada, file.name)
+                except Exception:
+                    ja_existe = False # Prevenção caso seja o primeiro upload do sistema
+                
+                # 2. TITULO DINÂMICO DA CAIXA (Notificação visual para o usuário)
+                if ja_existe:
+                    titulo_expander = f"⚠️ ALERTA: '{file.name}' já existe no banco!"
+                else:
+                    titulo_expander = f"📄 Arquivo {idx+1}: {file.name}"
+
+                # 3. CRIAÇÃO DA CAIXA
+                with st.expander(titulo_expander, expanded=False):
                     try:
-                        ja_existe = file_manager.verificar_arquivo_existe(origem_selecionada, file.name)
                         if ja_existe:
-                            # CORREÇÃO 2: Alerta muito mais claro e chamativo
-                            st.error("🚨 **ATENÇÃO: PLANILHA DUPLICADA DETECTADA!**\n\nEste exato arquivo já consta no banco de dados da plataforma. Se você prosseguir, os dados antigos serão apagados e **SUBSTITUÍDOS** pela versão que você está subindo agora.")
-                            texto_botao = f"🔄 Confirmar Substituição de {file.name}"
+                            st.error("🚨 **ATENÇÃO: PLANILHA DUPLICADA DETECTADA!**\n\nEste arquivo já consta no banco de dados. Se você prosseguir, os dados antigos serão apagados e **SUBSTITUÍDOS** pela versão que você está subindo agora.")
+                            texto_botao = f"🔄 Confirmar Substituição"
                         else:
                             texto_botao = f"▶️ Processar {file.name}"
 
@@ -98,7 +109,6 @@ def render_dashboard():
                         selected_sheet = st.selectbox("Aba:", abas, key=f"sheet_{file.name}")
                         df_vis = file_manager.ler_amostra(file, origem_selecionada, selected_sheet)
                         
-                        # Tabela limitada a 150 pixels de altura para não forçar scroll
                         st.dataframe(df_vis, height=150, use_container_width=True)
                         
                         if st.button(texto_botao, key=f"btn_{file.name}"):
@@ -107,8 +117,9 @@ def render_dashboard():
                                     file, origem_selecionada, selected_sheet, st.session_state.nome_usuario, st.session_state.role
                                 )
                             st.success(f"Carga concluída! Processadas {l_novas} linhas. Total consolidado no banco: {l_totais}.")
-                    except Exception as e: st.error(f"Erro: {e}")
-
+                    except Exception as e: 
+                        st.error(f"Erro ao ler arquivo: {e}")
+                        
     # ==========================================
     # GUIA 2: TRANSFORMAÇÃO (Power Query Local)
     # ==========================================
