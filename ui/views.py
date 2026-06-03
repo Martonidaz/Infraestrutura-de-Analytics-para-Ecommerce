@@ -119,7 +119,7 @@ def render_dashboard():
                             st.success(f"Carga concluída! Processadas {l_novas} linhas. Total consolidado no banco: {l_totais}.")
                     except Exception as e: 
                         st.error(f"Erro ao ler arquivo: {e}")
-                        
+
     # ==========================================
     # GUIA 2: TRANSFORMAÇÃO (Power Query Local)
     # ==========================================
@@ -180,9 +180,23 @@ def render_dashboard():
 
                 with col_regras:
                     st.markdown("### ⚙️ Etapas Aplicadas")
-                    st.info("Aqui as regras em Python/Polars serão injetadas.")
-                    st.selectbox("Nova Regra:", ["Nenhuma", "Definir Chave Primária", "Substituir Valores", "Remover Colunas Vazias", "Alterar Tipo de Dado"])
-                    st.button("Executar Limpeza", use_container_width=True, disabled=True)
+                    st.info("Modelo Estrela (Star Schema) pronto para execução via ETL Engine.")
+                    
+                    st.write("**Tabelas que serão geradas:**")
+                    st.markdown("- 🧊 dClientes\n- 🧊 dProdutos\n- 🧊 dLogistica\n- 🔥 fVendas")
+                    st.write("")
+                    
+                    # O botão mágico!
+                    if st.button("🚀 Executar Limpeza", use_container_width=True, type="primary"):
+                        with st.spinner("A modelar dados..."):
+                            try:
+                                # df_mk é o dataframe do marketplace inteiro que já está na memória do Streamlit
+                                resumo = file_manager.executar_pipeline_ouro(mk_escolhido, df_mk)
+                                st.success("Pipeline Ouro finalizado com sucesso!")
+                                st.write("Resumo da Modelagem:")
+                                st.json(resumo)
+                            except Exception as e:
+                                st.error(f"Erro no processamento: {e}")
             else:
                 st.warning("Não há bancos disponíveis para transformação. Vá na aba de Ingestão primeiro.")
 

@@ -1,11 +1,15 @@
 import os
 import pandas as pd
+from core import etl_engine
 
 RAW_DATA_DIR = os.path.join("data", "raw")
 PROCESSED_DATA_DIR = os.path.join("data", "processed")
+GOLD_DATA_DIR = os.path.join("data", "gold") # NOVA PASTA PARA O MODELO ESTRELA
 
 os.makedirs(RAW_DATA_DIR, exist_ok=True)
 os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
+os.makedirs(GOLD_DATA_DIR, exist_ok=True) # Cria a pasta fisicamente se não existir
+
 
 ESTRUTURA_DADOS = {
     "Mercado Livre": { "Vendas (Geral)": {"skiprows": 5}, "Repasse Financeiro (Mercado Pago)": {"skiprows": 0} },
@@ -120,3 +124,32 @@ def listar_bancos_disponiveis():
                     "arquivo": file, "marketplace": marketplace, "tipo": tipo, "caminho": caminho, "dataframe": df
                 })
     return bancos
+
+def executar_pipeline_ouro(marketplace, df_bruto):
+    """
+    Passa o dataframe bruto pelo motor de ETL e guarda o Modelo Estrela na pasta Gold.
+    """
+    # 1. Camada Prata (Limpeza Base)
+    df_prata = etl_engine.limpar_base_vendas_ml(df_bruto)
+    
+    # 2. Extração das Dimensões e Tabela Fato
+    d_clientes = etl_engine.extrair_dclientes(df_prata)
+    d_produtos = etl_engine.extrair_dprodutos(df_prata)
+    d_logistica = etl_engine.extrair_dlogistica(df_prata)
+    f_vendas = etl_engine.extrair_fvendas(df_prata)
+    
+    # 3. Guardar no banco de dados Ouro (Gold)
+    mk_limpo = marketplace.replace(' ', '_').lower()
+    
+    d_clientes.to_parquet(os.path.join(GOLD_DATA_DIR, f"dim_clientes_{mk_limpo}.parquet"), index=False)
+    d_produtos.to_parquet(os.path.join(GOLD_DATA_DIR, f"dim_produtos_{mk_limpo}.parquet"), index=False)
+    d_logistica.to_parquet(os.path.join(GOLD_DATA_DIR, f"dim_logistica_{mk_limpo}.parquet"), index=False)
+    f_vendas.to_parquet(os.path.join(GOLD_DATA_DIR, f"fato_vendas_{mk_limpo}.parquet"), index=False)
+    
+    # Retorna um resumo para mostrar ao utilizador
+    return {
+        "Clientes Únicos (dClientes)": len(d_clientes),
+        "Produtos Únicos (dProdutos)": len(d_produtos),
+        "Registos de Envios (dLogistica)": len(d_logistica),
+        "Total de Transações (fVendas)": len(f_vendas)
+    }
