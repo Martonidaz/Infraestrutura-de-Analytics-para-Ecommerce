@@ -186,15 +186,33 @@ def render_dashboard():
                     st.markdown("- 🧊 dClientes\n- 🧊 dProdutos\n- 🧊 dLogistica\n- 🔥 fVendas")
                     st.write("")
                     
-                    # O botão mágico!
+# O botão mágico!
                     if st.button("🚀 Executar Limpeza", use_container_width=True, type="primary"):
                         with st.spinner("A modelar dados..."):
                             try:
-                                # df_mk é o dataframe do marketplace inteiro que já está na memória do Streamlit
-                                resumo = file_manager.executar_pipeline_ouro(mk_escolhido, df_mk)
+                                # Recebe o resumo e o DataFrame Limpo
+                                resumo, df_limpo = file_manager.executar_pipeline_ouro(mk_escolhido, df_mk)
                                 st.success("Pipeline Ouro finalizado com sucesso!")
                                 st.write("Resumo da Modelagem:")
                                 st.json(resumo)
+                                
+                                st.markdown("### 📥 Baixar Planilha Limpa")
+                                c1, c2, c3 = st.columns(3)
+                                
+                                # Exportar CSV
+                                csv_data = df_limpo.to_csv(index=False, sep=';').encode('utf-8-sig')
+                                c1.download_button("Exportar CSV", data=csv_data, file_name="base_limpa_ml.csv", mime="text/csv", use_container_width=True)
+                                
+                                # Exportar Excel
+                                import io
+                                excel_buffer = io.BytesIO()
+                                df_limpo.to_excel(excel_buffer, index=False, engine='openpyxl')
+                                c2.download_button("Exportar XLSX", data=excel_buffer.getvalue(), file_name="base_limpa_ml.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                                
+                                # Exportar PDF (HTML para impressão)
+                                html_data = f"<html><body><h2>Base Limpa - Mercado Livre</h2>{df_limpo.to_html(index=False)}</body></html>".encode('utf-8')
+                                c3.download_button("Exportar PDF", data=html_data, file_name="base_limpa_ml.html", mime="text/html", help="Abre no navegador, pressione Ctrl+P para salvar como PDF", use_container_width=True)
+
                             except Exception as e:
                                 st.error(f"Erro no processamento: {e}")
             else:

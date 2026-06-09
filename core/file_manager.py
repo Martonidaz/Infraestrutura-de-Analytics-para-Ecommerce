@@ -129,14 +129,25 @@ def executar_pipeline_ouro(marketplace, df_bruto):
     """
     Passa o dataframe bruto pelo motor de ETL e guarda o Modelo Estrela na pasta Gold.
     """
+    # 0. Separação: Vendas vs Repasse Mercado Pago
+    df_vendas_bruto = df_bruto[df_bruto['Tipo_Relatorio'] == 'Vendas (Geral)'].copy()
+    df_mp_bruto = df_bruto[df_bruto['Tipo_Relatorio'] == 'Repasse Financeiro (Mercado Pago)'].copy()
+    
+    if df_vendas_bruto.empty:
+        raise ValueError("Nenhum dado de 'Vendas (Geral)' foi encontrado para este Marketplace.")
+
     # 1. Camada Prata (Limpeza Base)
-    df_prata = etl_engine.limpar_base_vendas_ml(df_bruto)
+    df_vendas_prata = etl_engine.limpar_base_vendas_ml(df_vendas_bruto)
+    df_mp_prata = etl_engine.limpar_data_liberacao_mp(df_mp_bruto)
+    
+    # 1.5. A UNIFICAÇÃO (Busca Inteligente)
+    df_prata_unificada = etl_engine.unificar_vendas_repasse(df_vendas_prata, df_mp_prata)
     
     # 2. Extração das Dimensões e Tabela Fato
-    d_clientes = etl_engine.extrair_dclientes(df_prata)
-    d_produtos = etl_engine.extrair_dprodutos(df_prata)
-    d_logistica = etl_engine.extrair_dlogistica(df_prata)
-    f_vendas = etl_engine.extrair_fvendas(df_prata)
+    d_clientes = etl_engine.extrair_dclientes(df_prata_unificada)
+    d_produtos = etl_engine.extrair_dprodutos(df_prata_unificada)
+    d_logistica = etl_engine.extrair_dlogistica(df_prata_unificada)
+    f_vendas = etl_engine.extrair_fvendas(df_prata_unificada)
     
     # 3. Guardar no banco de dados Ouro (Gold)
     mk_limpo = marketplace.replace(' ', '_').lower()
@@ -146,10 +157,11 @@ def executar_pipeline_ouro(marketplace, df_bruto):
     d_logistica.to_parquet(os.path.join(GOLD_DATA_DIR, f"dim_logistica_{mk_limpo}.parquet"), index=False)
     f_vendas.to_parquet(os.path.join(GOLD_DATA_DIR, f"fato_vendas_{mk_limpo}.parquet"), index=False)
     
-    # Retorna um resumo para mostrar ao utilizador
-    return {
+    resumo = {
         "Clientes Únicos (dClientes)": len(d_clientes),
         "Produtos Únicos (dProdutos)": len(d_produtos),
         "Registos de Envios (dLogistica)": len(d_logistica),
         "Total de Transações (fVendas)": len(f_vendas)
     }
+    
+    return resumo, df_prata_unificada

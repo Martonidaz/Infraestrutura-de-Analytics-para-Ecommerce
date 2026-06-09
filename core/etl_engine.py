@@ -12,7 +12,6 @@ warnings.filterwarnings("ignore", message="Could not infer format")
 def limpar_base_vendas_ml(df_raw: pd.DataFrame) -> pd.DataFrame:
     df = df_raw.copy()
 
-    # 1. RENOMEAR COLUNAS
     col_mapping = {
         "N.º de venda": "ID_Venda", "Data da venda": "Data da Compra", "Estado": "Status",
         "Unidades": "Unidades Compradas", "Receita por produtos (BRL)": "Receita por Produto",
@@ -26,12 +25,10 @@ def limpar_base_vendas_ml(df_raw: pd.DataFrame) -> pd.DataFrame:
     }
     df.rename(columns=col_mapping, inplace=True, errors='ignore')
 
-    # Limpeza Global de SKU
     if 'SKU' in df.columns:
         df['SKU'] = df['SKU'].astype(str).str.replace(r'\.0$', '', regex=True)
         df['SKU'] = df['SKU'].str.replace(r'^(?i)(nan|none|<na>|null)$', '', regex=True).str.strip()
 
-    # Filtro de Segurança
     mask_valid = (
         df['ID_Venda'].notna() & 
         (df['ID_Venda'].astype(str).str.strip() != "") & 
@@ -39,12 +36,13 @@ def limpar_base_vendas_ml(df_raw: pd.DataFrame) -> pd.DataFrame:
     )
     df = df[mask_valid]
 
-    # 2. CONVERSÃO DE DATA (Padrão Brasileiro Seguro)
+    # CONVERSÃO DE DATA SEGURA
     if 'Data da Compra' in df.columns:
-        df['Data da Compra'] = df['Data da Compra'].astype(str).str.replace(" hs.", "", regex=False)
-        df['Data da Compra'] = pd.to_datetime(df['Data da Compra'], format='mixed', dayfirst=True, errors='coerce')
+        # Remove " hs." e espaços extras de forma limpa
+        df['Data da Compra'] = df['Data da Compra'].astype(str).str.replace(r'\s*hs\.', '', regex=True).str.strip()
+        # Converte permitindo o formato brasileiro sem falhar silenciosamente
+        df['Data da Compra'] = pd.to_datetime(df['Data da Compra'], errors='coerce', dayfirst=True)
 
-    # 3. EXTRAÇÃO DE TAMANHO
     def extrair_tamanho(row):
         tit_raw = str(row.get('Nome Anuncio', '')).lower().strip()
         var_raw = str(row.get('Variação', '')).lower().strip()
@@ -56,7 +54,6 @@ def limpar_base_vendas_ml(df_raw: pd.DataFrame) -> pd.DataFrame:
         
         tam_var = ""
         try:
-            # Correção de índice M para Python
             tam_var = var_raw.split(" ")[6] if len(var_raw.split(" ")) > 6 else ""
         except: pass
 
@@ -66,7 +63,6 @@ def limpar_base_vendas_ml(df_raw: pd.DataFrame) -> pd.DataFrame:
 
     df['Tamanho'] = df.apply(extrair_tamanho, axis=1)
 
-    # 4. EXTRAÇÃO DE COR
     def extrair_cor(row):
         tit_min = str(row.get('Nome Anuncio', '')).lower().strip()
         var_min = str(row.get('Variação', '')).lower().strip()
@@ -99,7 +95,6 @@ def limpar_base_vendas_ml(df_raw: pd.DataFrame) -> pd.DataFrame:
 
     df['Cor'] = df.apply(extrair_cor, axis=1)
 
-    # 5. FORMATAÇÃO DE CPF E CEP
     def formatar_cpf(cpf):
         cpf = str(cpf).split('.')[0].zfill(11)
         if len(cpf) == 11: return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
@@ -113,13 +108,11 @@ def limpar_base_vendas_ml(df_raw: pd.DataFrame) -> pd.DataFrame:
     if 'CPF' in df.columns: df['CPF'] = df['CPF'].apply(formatar_cpf)
     if 'CEP' in df.columns: df['CEP'] = df['CEP'].apply(formatar_cep)
 
-    # 6. LIMPEZA DE TEXTO
     if 'Nome Cliente' in df.columns: df['Nome Cliente'] = df['Nome Cliente'].astype(str).str.title().str.strip()
     if 'Endereco Cliente' in df.columns: df['Endereco Cliente'] = df['Endereco Cliente'].astype(str).str.title().str.strip()
     if 'Endereco Cliente' in df.columns:
         df['Bairro'] = df['Endereco Cliente'].apply(lambda x: str(x).split(' - ')[-1].split(',')[0].strip() if ' - ' in str(x) else None)
 
-    # 7. VARIÁVEIS DE TEMPO
     if 'Data da Compra' in df.columns:
         df['Hora da Compra'] = df['Data da Compra'].dt.hour
         bins = [-1, 5, 11, 17, 24]
@@ -127,7 +120,6 @@ def limpar_base_vendas_ml(df_raw: pd.DataFrame) -> pd.DataFrame:
         df['Turno'] = pd.cut(df['Hora da Compra'], bins=bins, labels=labels, right=False)
         df['Data_Relacionamento'] = df['Data da Compra'].dt.date
 
-    # 8. TIPAGEM MONETÁRIA FINAL (Corrigido o erro \d)
     cols_monetarias = ['Receita por Produto', 'Impostos', 'Tarifas Envio', 'Descontos', 'Taxa Cancelamento', 'Valor Total', 'Valor Venda']
     for col in cols_monetarias:
         if col in df.columns:
@@ -135,12 +127,9 @@ def limpar_base_vendas_ml(df_raw: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-# =====================================================================
-# FUNÇÃO BLINDADA COM FORCE UPPERCASE (IGUAL POWER BI)
-# =====================================================================
 def limpar_chave(v):
     if pd.isna(v): return ""
-    s = str(v).strip().upper() # Força Maiúscula absoluta
+    s = str(v).strip().upper() 
     if s in ['NAN', 'NONE', '<NA>', 'NULL', '']: return ""
     if s.endswith('.0'): return s[:-2]
     return s
@@ -174,7 +163,6 @@ def extrair_dprodutos(df_base: pd.DataFrame) -> pd.DataFrame:
     colunas_produto = ["ID_Produto", "SKU", "Nome Anuncio", "Tamanho", "Cor", "Loja Oficial", "Tipo Anuncio"]
     df_produtos = df[[col for col in colunas_produto if col in df.columns]].copy()
     
-    # Agora a remoção de duplicatas é 100% igual ao Power BI
     df_produtos = df_produtos.drop_duplicates(subset=["ID_Produto"], keep='first').reset_index(drop=True)
 
     def definir_categoria(nome):
@@ -272,3 +260,69 @@ def extrair_fvendas(df_base: pd.DataFrame) -> pd.DataFrame:
         df_fato['Tarifa Envio'] = df_fato['Tarifa Envio'] * -1
 
     return df_fato
+
+# =====================================================================
+# MÓDULO DE REPASSE E UNIFICAÇÃO (MERCADO PAGO)
+# =====================================================================
+
+def limpar_data_liberacao_mp(df_raw: pd.DataFrame) -> pd.DataFrame:
+    df = df_raw.copy()
+    col_mapping = {
+        "Data da compra (date_created)": "Data da Compra",
+        "Data de liberação do dinheiro (date_released)": "Data de Repasse"
+    }
+    cols_to_keep = [c for c in col_mapping.keys() if c in df.columns]
+    if not cols_to_keep:
+        return pd.DataFrame(columns=['Data da Compra', 'Data de Repasse'])
+        
+    df = df[cols_to_keep].rename(columns=col_mapping)
+    
+    if 'Data da Compra' in df.columns:
+        df['Data da Compra'] = pd.to_datetime(df['Data da Compra'], errors='coerce')
+    if 'Data de Repasse' in df.columns:
+        df['Data de Repasse'] = pd.to_datetime(df['Data de Repasse'], errors='coerce')
+        
+    return df.dropna(subset=['Data da Compra']).copy()
+
+def unificar_vendas_repasse(df_vendas: pd.DataFrame, df_mp: pd.DataFrame) -> pd.DataFrame:
+    if df_mp.empty or 'Data da Compra' not in df_mp.columns:
+        df_vendas['Data de Repasse'] = pd.NaT
+        return df_vendas
+        
+    df_m = df_mp.dropna(subset=['Data da Compra']).copy()
+    if df_m.empty:
+        df_vendas['Data de Repasse'] = pd.NaT
+        return df_vendas
+
+    # Proteção Avançada: Separa linhas com Data da Compra válidas das corrompidas/vazias
+    mask_valid = df_vendas['Data da Compra'].notna()
+    df_v_valid = df_vendas[mask_valid].copy()
+    df_v_invalid = df_vendas[~mask_valid].copy()
+
+    if df_v_valid.empty:
+        df_vendas['Data de Repasse'] = pd.NaT
+        return df_vendas
+
+    # Alinha os Relógios (força Nanossegundos)
+    df_v_valid['Data da Compra'] = pd.to_datetime(df_v_valid['Data da Compra']).astype('datetime64[ns]')
+    df_m['Data da Compra'] = pd.to_datetime(df_m['Data da Compra']).astype('datetime64[ns]')
+
+    df_v_valid = df_v_valid.sort_values('Data da Compra')
+    df_m = df_m.sort_values('Data da Compra')
+    
+    # A Busca Inteligente (Tolerância de 3 dias = 4320 min)
+    df_merged = pd.merge_asof(
+        left=df_v_valid, 
+        right=df_m[['Data da Compra', 'Data de Repasse']], 
+        on='Data da Compra', 
+        direction='nearest',
+        tolerance=pd.Timedelta(minutes=4320)
+    )
+    
+    # Cola as vendas válidas com as inválidas novamente, garantindo que NADA se perca
+    df_final = pd.concat([df_merged, df_v_invalid], ignore_index=True)
+    
+    if 'ID_Venda' in df_final.columns:
+        df_final = df_final.sort_values('ID_Venda', ascending=False).reset_index(drop=True)
+        
+    return df_final
